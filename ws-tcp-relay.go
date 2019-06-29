@@ -68,7 +68,7 @@ func relayHandler(ws *websocket.Conn) {
 	_ = conn.Close()
 	_ = ws.Close()
 	<-doneCh
-	logger.Info("close")
+	logger.Info("closed ")
 }
 
 func usage() {
