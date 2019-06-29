@@ -18,9 +18,33 @@ import (
 
 var tcpAddress string
 var binaryMode bool
+var tcpAddr string
 
 func copyReader(dst io.Writer, src io.Reader, doneCh chan<- bool) {
-	_, _ = io.Copy(dst, src)
+	const maxLen = 64 * 1024
+	buf := make([]byte, maxLen)
+	headerLen := uint16(4)
+	for {
+		_, er := io.ReadFull(src, buf[:headerLen])
+		//	_, er := src.Read(buf[:headerLen])
+		if er != nil {
+			break
+		}
+		totalLen := binary.LittleEndian.Uint16(buf)
+		if totalLen > headerLen {
+			_, er = io.ReadFull(src, buf[headerLen:totalLen])
+			if er != nil {
+				break
+			}
+		}
+		nw, ew := dst.Write(buf[:totalLen])
+		if ew != nil {
+			break
+		}
+		if int(totalLen) != nw {
+			break
+		}
+	}
 	doneCh <- true
 }
 func copyWriter(dst io.Writer, src io.Reader, doneCh chan<- bool) {
@@ -28,17 +52,19 @@ func copyWriter(dst io.Writer, src io.Reader, doneCh chan<- bool) {
 	buf := make([]byte, maxLen)
 	headerLen := uint16(4)
 	for {
-		_, er := src.Read(buf[:headerLen])
+		_, er := io.ReadFull(src, buf[:headerLen])
+		//	_, er := src.Read(buf[:headerLen])
 		if er != nil {
 			break
 		}
 		totalLen := binary.LittleEndian.Uint16(buf)
-		_, er = src.Read(buf[headerLen : totalLen-headerLen])
-		if er != nil {
-			break
+		if totalLen > headerLen {
+			_, er = io.ReadFull(src, buf[headerLen:totalLen])
+			if er != nil {
+				break
+			}
 		}
-
-		nw, ew := dst.Write(buf[0:totalLen])
+		nw, ew := dst.Write(buf[:totalLen])
 		if ew != nil {
 			break
 		}
@@ -50,7 +76,7 @@ func copyWriter(dst io.Writer, src io.Reader, doneCh chan<- bool) {
 }
 
 func relayHandler(ws *websocket.Conn) {
-	conn, err := net.DialTimeout("tcp", tcpAddress, time.Second*2)
+	conn, err := net.DialTimeout("tcp", tcpAddr, time.Second*2)
 	if err != nil {
 		logger.Info("connect gate error", zap.Error(err))
 		return
@@ -58,6 +84,8 @@ func relayHandler(ws *websocket.Conn) {
 	if binaryMode {
 		ws.PayloadType = websocket.BinaryFrame
 	}
+	wsRAddr := ws.LocalAddr().String()
+	logger.Info("start one proxy", zap.String("ws", wsRAddr), zap.String("tcp", tcpAddr))
 
 	doneCh := make(chan bool)
 
@@ -68,7 +96,7 @@ func relayHandler(ws *websocket.Conn) {
 	_ = conn.Close()
 	_ = ws.Close()
 	<-doneCh
-	logger.Info("closed ")
+	logger.Info("end one proxy", zap.String("ws", wsRAddr), zap.String("tcp", tcpAddr))
 }
 
 func usage() {
@@ -81,25 +109,22 @@ func main() {
 	var certFile string
 	var keyFile string
 
+	flag.StringVar(&tcpAddr, "c", "127.0.0.1:7788", "connect tcp addr[ip:port]")
 	flag.UintVar(&port, "p", 8080, "The port to listen on")
 	flag.UintVar(&port, "port", 8080, "The port to listen on")
 	flag.StringVar(&certFile, "tlscert", "", "TLS cert file path")
 	flag.StringVar(&keyFile, "tlskey", "", "TLS key file path")
-	flag.BoolVar(&binaryMode, "b", false, "Use binary frames instead of text frames")
-	flag.BoolVar(&binaryMode, "binary", false, "Use binary frames instead of text frames")
+	flag.BoolVar(&binaryMode, "b", true, "Use binary frames instead of text frames")
+	flag.BoolVar(&binaryMode, "binary", true, "Use binary frames instead of text frames")
 	flag.Usage = usage
 	flag.Parse()
 
-	tcpAddress = flag.Arg(0)
-	if tcpAddress == "" {
-		_, _ = fmt.Fprintln(os.Stderr, "No address specified")
-		os.Exit(1)
-	}
-	l, _ := logger.New("ws-tcp-relay", ".", zap.DebugLevel)
+	l, _ := logger.New("ws-tcp-relay", "../log/", zap.DebugLevel)
 	logger.SetDefaultLog(l)
 	portString := fmt.Sprintf(":%d", port)
-
+	logger.Info("gate addr", zap.String("addr", tcpAddr))
 	logger.Info("Listening addr", zap.String("addr", portString))
+	logger.Info("is use binary", zap.Bool("binary", binaryMode))
 	http.Handle("/ws", websocket.Handler(relayHandler))
 	http.Handle("/", http.HandlerFunc(home))
 	var err error

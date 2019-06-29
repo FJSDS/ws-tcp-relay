@@ -45,7 +45,7 @@ func newLogger(path string, lvl zapcore.Level) (*zap.Logger, error) {
 		},
 		Encoding:         "console",
 		EncoderConfig:    ec,
-		OutputPaths:      []string{path},
+		OutputPaths:      []string{"stderr", path},
 		ErrorOutputPaths: []string{"stderr"},
 	}
 	log, err := cfg.Build(zap.AddStacktrace(zap.ErrorLevel), zap.AddCallerSkip(1))
