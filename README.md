@@ -15,9 +15,9 @@ Usage: ws-tcp-relay <tcpTargetAddress>
   -binary
     	Use binary frames instead of text frames
   -p uint
-    	The port to listen on (default 4223)
+    	The port to listen on (default 8080)
   -port uint
-    	The port to listen on (default 4223)
+    	The port to listen on (default 8080)
   -tlscert string
     	TLS cert file path
   -tlskey string
@@ -33,7 +33,5 @@ To use secure WebSockets simply specify both the `tlscert` and `tlskey` flags.
 
 ## Installation
 ```
-go get -u github.com/isobit/ws-tcp-relay
+go get -u github.com/FJSDS/ws-tcp-relay
 ```
-
-Binaries are also available on the [release page](https://github.com/isobit/ws-tcp-relay/releases/).
