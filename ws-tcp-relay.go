@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"html/template"
@@ -18,8 +19,33 @@ import (
 var tcpAddress string
 var binaryMode bool
 
-func copyWorker(dst io.Writer, src io.Reader, doneCh chan<- bool) {
-	io.Copy(dst, src)
+func copyReader(dst io.Writer, src io.Reader, doneCh chan<- bool) {
+	_, _ = io.Copy(dst, src)
+	doneCh <- true
+}
+func copyWriter(dst io.Writer, src io.Reader, doneCh chan<- bool) {
+	const maxLen = 64 * 1024
+	buf := make([]byte, maxLen)
+	headerLen := uint16(4)
+	for {
+		_, er := src.Read(buf[:headerLen])
+		if er != nil {
+			break
+		}
+		totalLen := binary.LittleEndian.Uint16(buf)
+		_, er = src.Read(buf[headerLen : totalLen-headerLen])
+		if er != nil {
+			break
+		}
+
+		nw, ew := dst.Write(buf[0:totalLen])
+		if ew != nil {
+			break
+		}
+		if int(totalLen) != nw {
+			break
+		}
+	}
 	doneCh <- true
 }
 
@@ -35,8 +61,8 @@ func relayHandler(ws *websocket.Conn) {
 
 	doneCh := make(chan bool)
 
-	go copyWorker(conn, ws, doneCh)
-	go copyWorker(ws, conn, doneCh)
+	go copyReader(conn, ws, doneCh)
+	go copyWriter(ws, conn, doneCh)
 
 	<-doneCh
 	_ = conn.Close()
